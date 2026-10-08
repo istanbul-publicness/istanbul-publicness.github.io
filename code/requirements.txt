@@ -1,0 +1,4 @@
+shapely>=2.1
+pandas>=2.2
+numpy>=1.26
+openpyxl>=3.1   # compile_rules.py only

@@ -1,0 +1,5 @@
+code/inputs/
+code/work/
+code/paths_local.json
+__pycache__/
+*.pyc

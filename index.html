@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Istanbul Ground Publicness</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<style>
+  :root{ --panel:#fff; --ink:#12120f; --muted:#6b6a66; --line:rgba(11,11,11,.13); --hover:#f3f2ef; }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);background:#f6f5f1}
+  #map{position:absolute;inset:0}
+
+  #panel{position:absolute;top:12px;right:12px;width:310px;max-height:calc(100% - 24px);
+         overflow-y:auto;background:var(--panel);border:1px solid var(--line);
+         border-radius:10px;padding:14px 15px;box-shadow:0 2px 14px rgba(0,0,0,.09)}
+  h1{margin:0 0 2px;font-size:15px;font-weight:600}
+  .sub{margin:0 0 12px;font-size:12px;color:var(--muted);line-height:1.45}
+  h2{margin:14px 0 6px;font-size:11px;font-weight:600;letter-spacing:.05em;
+     text-transform:uppercase;color:var(--muted)}
+
+  .seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;margin:0 0 8px}
+  .seg button{flex:1;border:0;background:#fff;padding:5px 6px;font:inherit;font-size:12px;cursor:pointer;color:var(--muted)}
+  .seg button.on{background:#12120f;color:#fff}
+
+  .ramp{height:11px;border-radius:3px;margin:0 0 3px;
+        background:linear-gradient(90deg,#a32d2d,#e34948,#d8d6cd,#5dcaa5,#0f6e56)}
+  .ends{display:flex;justify-content:space-between;font-size:11px;color:var(--muted)}
+  .key{display:flex;align-items:center;gap:7px;font-size:12px;margin:3px 0}
+  .key .sw{width:12px;height:12px;border-radius:3px;flex:none;border:1px solid rgba(0,0,0,.15)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+  .hatch{background:repeating-linear-gradient(135deg,#d8d6cd 0 2px,#12120f 2px 3px)}
+
+  #info{margin-top:12px;padding-top:11px;border-top:1px solid var(--line);font-size:12.5px}
+  #info .nm{font-weight:600;font-size:13px;line-height:1.3;margin:0}
+  .big{font-size:22px;font-weight:600;line-height:1.1;margin:6px 0 0;font-variant-numeric:tabular-nums}
+  .big small{font-size:12px;font-weight:400;color:var(--muted)}
+  #info dl{display:grid;grid-template-columns:auto 1fr;gap:2px 9px;margin:8px 0 0;font-size:12px}
+  #info dt{color:var(--muted)}
+  #info dd{margin:0;font-variant-numeric:tabular-nums}
+  .bar{display:flex;height:14px;border-radius:3px;overflow:hidden;margin:6px 0 4px;border:1px solid var(--line)}
+  .bar span{height:100%}
+  .hint{color:var(--muted);font-size:12px;margin:6px 0 0}
+  .grade{display:inline-block;padding:0 6px;border-radius:4px;font-size:11px;font-weight:600;color:#fff}
+  details summary{font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;
+                  color:var(--muted);cursor:pointer;margin-top:12px}
+  a{color:#185fa5}
+  @media (max-width:600px){ #panel{top:auto;bottom:0;right:0;left:0;width:auto;max-height:46%;border-radius:10px 10px 0 0} }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<aside id="panel">
+  <h1>Ground publicness of Istanbul</h1>
+  <p class="sub">Every square metre of each 500 m cell is assigned an access regime
+     (Dovey &amp; Pafka 2020) from OpenStreetMap geometry; Foursquare and Overture
+     places decide what a building's ground floor is. The cell score is the
+     area-weighted mean of the regime scores.</p>
+
+  <h2>Colour cells by</h2>
+  <div class="seg" id="mode">
+    <button data-m="pct" class="on">percentile in the city</button>
+    <button data-m="P">score P (0–1)</button>
+  </div>
+  <div class="ramp"></div>
+  <div class="ends" id="ends"><span>least public</span><span>median</span><span>most public</span></div>
+  <div class="key" style="margin-top:7px"><span class="sw hatch"></span>grade C: wide uncertainty — read with care</div>
+  <div class="key"><span class="sw" style="background:#bdbcb5"></span>insufficient evidence (under 1/10 of the ground scorable)</div>
+  <p class="hint">Zoom in (from about the district scale) and the painted ground
+     replaces the cells.</p>
+
+  <h2>Ground regimes</h2>
+  <div class="grid2" id="regimes"></div>
+
+  <div id="info"><p class="hint">Select a cell, or zoom in and select a piece of ground.</p></div>
+
+  <details>
+    <summary>Method and data</summary>
+    <p class="sub" style="margin:8px 0 0">Scores: open-public 1, open-private 0.50,
+      quasi-public 0.47, ticketed 0.38, invitation 0.13, inaccessible 0
+      (P = A × [0.5 + 0.5 C]). Residential yards count as invitation; urban
+      groves under 50 ha and grass as open-public. Car space, larger forests and
+      farmland are held out of the score and reported as shares.
+      Uncertainty: unknown ground counted as 0 or 1 (missing-data range) and five
+      alternative rule sets (rule range); grade A when both are narrow.</p>
+    <p class="sub" style="margin:8px 0 0">Download:
+      cells as <a href="data/cells.csv" download>CSV</a> or
+      <a href="data/cells.geojson" download>GeoJSON</a> ·
+      <a href="code/publicness_kurallar.xlsx" download>rules workbook</a> (every
+      decision and dictionary entry) · ground plane GeoPackage (486 MB, archive
+      link to follow). Code and rules are in this site's repository.</p>
+    <p class="sub" style="margin:8px 0 0">Coverage: 28.79–29.27°E, 40.84–41.29°N,
+      the extent of the Foursquare data. OpenStreetMap © contributors (ODbL),
+      Geofabrik extract of 6 Oct 2026; Overture Maps places and buildings, Oct 2026;
+      Foursquare Open Source Places. Base map © CARTO. Rules version d39e772c.</p>
+  </details>
+</aside>
+
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/pmtiles@3.0.6/dist/pmtiles.js"></script>
+<script>
+// regime code in the tiles -> colour, label (same colours as the paper's figures)
+const REG = [
+  ["op", "open_public",      "#0f6e56", "open-public"],
+  ["qp", "quasi_public",     "#5dcaa5", "quasi-public"],
+  ["ti", "ticketed",         "#d9b44a", "ticketed"],
+  ["pr", "open_private",     "#ec9a5b", "open-private"],
+  ["in", "invitation",       "#d0504a", "invitation"],
+  ["ya", "yard",             "#e8a39e", "residential yard"],
+  ["na", "inaccessible",     "#6e1c1c", "inaccessible"],
+  ["ub", "unknown_building", "#cfcdc4", "building, use unknown"],
+  ["ca", "car",              "#a6a59f", "car space"],
+  ["do", "natural",          "#c9d3b8", "forest / farmland"],
+  ["um", "unmapped",         "#f1f0eb", "unmapped"],
+];
+const BBOX = [28.79, 40.84, 29.27, 41.29];
+const GRADE_COL = {A: "#0f6e56", B: "#b8860b", C: "#a32d2d"};
+const RAMP_STOPS = ["#a32d2d", "#e34948", "#d8d6cd", "#5dcaa5", "#0f6e56"];
+let mode = "pct";
+
+const ramp = () => mode === "pct"
+  ? ["interpolate", ["linear"], ["to-number", ["get", "P_yuzdelik"]],
+     0, RAMP_STOPS[0], 25, RAMP_STOPS[1], 50, RAMP_STOPS[2], 75, RAMP_STOPS[3], 100, RAMP_STOPS[4]]
+  : ["interpolate", ["linear"], ["to-number", ["get", "P_ground"]],
+     0, RAMP_STOPS[0], 0.25, RAMP_STOPS[1], 0.5, RAMP_STOPS[2], 0.75, RAMP_STOPS[3], 1, RAMP_STOPS[4]];
+const cellColour = () => ["case", ["!=", ["get", "gosterim"], "puan"], "#bdbcb5", ramp()];
+// cells give way to the painted ground between zoom 11.6 and 12.8
+const cellOpacity = ["interpolate", ["linear"], ["zoom"], 9, 0.74, 11.6, 0.66, 12.8, 0.01];  // not 0: an invisible fill is not clickable
+const hatchOpacity = ["interpolate", ["linear"], ["zoom"], 9, 0.55, 11.6, 0.45, 12.8, 0];
+
+// diagonal hatch for grade C, drawn once onto a canvas
+function hatchImage() {
+  const s = 8, c = document.createElement("canvas");
+  c.width = c.height = s;
+  const g = c.getContext("2d");
+  g.strokeStyle = "rgba(18,18,15,0.8)"; g.lineWidth = 1.1;
+  g.beginPath(); g.moveTo(0, s); g.lineTo(s, 0); g.moveTo(-2, 2); g.lineTo(2, -2); g.moveTo(s - 2, s + 2); g.lineTo(s + 2, s - 2); g.stroke();
+  return g.getImageData(0, 0, s, s);
+}
+
+const protocol = new pmtiles.Protocol();
+maplibregl.addProtocol("pmtiles", protocol.tile);
+
+const map = new maplibregl.Map({
+  container: "map",
+  style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+  center: [29.0, 41.04], zoom: 10.3, maxZoom: 18,
+});
+map.addControl(new maplibregl.NavigationControl({showCompass: false}), "top-left");
+map.addControl(new maplibregl.ScaleControl({maxWidth: 110, unit: "metric"}));
+
+map.on("load", async () => {
+  const [w, s, e, n] = BBOX;
+  map.addSource("mask", {type: "geojson", data: {type: "Feature", properties: {}, geometry: {
+    type: "Polygon", coordinates: [[[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]],
+                                   [[w, s], [e, s], [e, n], [w, n], [w, s]]]}}});
+  map.addLayer({id: "mask", type: "fill", source: "mask", paint: {"fill-color": "#8e8d87", "fill-opacity": 0.25}});
+
+  // ground plane: two vector-tile archives — z12-13 simplified, z14-15 full
+  // detail (overzoomed beyond) — kept apart so each stays under 100 MB
+  const groundColour = ["match", ["get", "r"], ...REG.flatMap(([c, , col]) => [c, col]), "#ffffff"];
+  for (const [id, file, zmin, zmax] of [["ground-far", "tiles/ground_far.pmtiles", 11.6, 14],
+                                        ["ground", "tiles/ground.pmtiles", 14, 24]]) {
+    const pm = new pmtiles.PMTiles(new URL(file, location.href).href);
+    protocol.add(pm);
+    map.addSource(id, {type: "vector", url: "pmtiles://" + pm.source.getKey()});
+    map.addLayer({
+      id, type: "fill", source: id, "source-layer": "zemin", minzoom: zmin, maxzoom: zmax,
+      paint: {"fill-color": groundColour, "fill-outline-color": "rgba(0,0,0,0)",
+              "fill-opacity": ["interpolate", ["linear"], ["zoom"], 11.6, 0, 12.6, 0.9]},
+    });
+  }
+  map.addImage("hatch", hatchImage());
+
+  const cells = await (await fetch("data/cells.geojson")).json();
+  map.addSource("cells", {type: "geojson", data: cells, promoteId: "id"});
+  map.addLayer({id: "cells", type: "fill", source: "cells",
+                paint: {"fill-color": cellColour(), "fill-opacity": cellOpacity}});
+  map.addLayer({id: "cells-hatch", type: "fill", source: "cells",
+                filter: ["all", ["==", ["get", "guven"], "C"], ["==", ["get", "gosterim"], "puan"]],
+                paint: {"fill-pattern": "hatch", "fill-opacity": hatchOpacity}});
+  map.addLayer({id: "cells-line", type: "line", source: "cells", minzoom: 13,
+                paint: {"line-color": "#12120f", "line-opacity": 0.55, "line-width": 0.8,
+                        "line-dasharray": [4, 3]}});
+  map.addLayer({id: "cell-sel", type: "line", source: "cells", filter: ["==", ["get", "id"], ""],
+                paint: {"line-color": "#1d6fe0", "line-width": 3.2}});   // blue: no regime uses it
+
+  map.on("click", e => {
+    const hit = map.queryRenderedFeatures(e.point, {layers: ["cells"]})[0];
+    const g = map.getZoom() >= 11.6
+      ? map.queryRenderedFeatures(e.point, {layers: [map.getZoom() >= 14 ? "ground" : "ground-far"]})[0] : null;
+    if (hit) { map.setFilter("cell-sel", ["==", ["get", "id"], hit.properties.id]); showCell(hit.properties, g); }
+  });
+  map.on("mousemove", e => {
+    map.getCanvas().style.cursor = map.queryRenderedFeatures(e.point, {layers: ["cells"]}).length ? "pointer" : "";
+  });
+  buildRegimes();
+  bindMode();
+});
+
+function bindMode() {
+  document.querySelectorAll("#mode button").forEach(b => b.onclick = () => {
+    mode = b.dataset.m;
+    document.querySelectorAll("#mode button").forEach(x => x.classList.toggle("on", x === b));
+    document.getElementById("ends").innerHTML = mode === "pct"
+      ? "<span>least public</span><span>median</span><span>most public</span>"
+      : "<span>0 inaccessible</span><span>0.5</span><span>1 open-public</span>";
+    map.setPaintProperty("cells", "fill-color", cellColour());
+  });
+}
+
+function buildRegimes() {
+  document.getElementById("regimes").innerHTML = REG.map(([, , col, lab]) =>
+    `<div class="key"><span class="sw" style="background:${col}"></span>${lab}</div>`).join("");
+}
+
+const f2 = v => v === null || v === undefined || v === "" ? "—" : (+v).toFixed(2);
+const pc = v => (100 * (+v || 0)).toFixed(0) + "%";
+
+function showCell(p, ground) {
+  const shown = p.gosterim === "puan";
+  const parts = REG.map(([, key, col, lab]) => [lab, col, +(p["sh_" + key] || 0)]).filter(x => x[2] > 0.004);
+  const bar = parts.map(([lab, col, v]) =>
+    `<span title="${lab} ${pc(v)}" style="width:${(v * 100).toFixed(2)}%;background:${col}"></span>`).join("");
+  const top = [...parts].sort((a, b) => b[2] - a[2]).slice(0, 4)
+    .map(([lab, , v]) => `${lab} ${pc(v)}`).join(" · ");
+  const cross = (+p.bar_level || 0) + (+p.bar_passes || 0);
+  const gLab = ground ? (REG.find(r => r[0] === ground.properties.r) || [])[3] : null;
+  document.getElementById("info").innerHTML = `
+    <p class="nm">500 m cell ${p.id}</p>
+    ${gLab ? `<p class="hint" style="margin:2px 0 0">Selected ground: <b>${gLab}</b></p>` : ""}
+    ${shown
+      ? `<p class="big">${p.P_yuzdelik !== null ? Math.round(p.P_yuzdelik) + "<small>th percentile</small>" : "—"}</p>
+         <p class="hint" style="margin:2px 0 0">more public than ${Math.round(p.P_yuzdelik)}% of scored cells</p>`
+      : `<p class="big" style="color:#8e8d87">insufficient evidence</p>
+         <p class="hint" style="margin:2px 0 0">only ${pc(p.scored_share)} of the ground can be scored</p>`}
+    <dl>
+      <dt>score P</dt><dd><b>${f2(p.P_ground)}</b> <span class="grade" style="background:${GRADE_COL[p.guven] || "#888"}">${p.guven}</span></dd>
+      <dt>missing-data range</dt><dd>${f2(p.P_lo)} – ${f2(p.P_hi)}</dd>
+      <dt>rule range</dt><dd>${f2(p.P_rule_lo)} – ${f2(p.P_rule_hi)}</dd>
+      <dt>scored ground</dt><dd>${pc(p.scored_share)} of the cell's land</dd>
+    </dl>
+    <h2 style="margin-top:12px">Ground composition</h2>
+    <div class="bar">${bar}</div>
+    <p class="hint" style="margin:0">${top}</p>
+    <h2 style="margin-top:12px">Barriers</h2>
+    <dl style="margin-top:0">
+      <dt>major roads</dt><dd>${Math.round(p.bar_major_m || 0)} m</dd>
+      <dt>surface rail</dt><dd>${Math.round(p.bar_rail_m || 0)} m</dd>
+      <dt>ground cut into</dt><dd>${p.bar_pieces ?? "—"} piece${p.bar_pieces == 1 ? "" : "s"}</dd>
+      <dt>pedestrian crossings</dt><dd>${cross} (${p.bar_level || 0} level, ${p.bar_passes || 0} bridge/underpass)</dd>
+    </dl>`;
+}
+</script>
+</body>
+</html>
