@@ -3,7 +3,7 @@
 An open map and dataset of how public the ground of Istanbul is, cell by cell,
 read from the ground plane rather than from counts of venues.
 
-**Map:** open `index.html` (published with GitHub Pages).
+**Map:** https://istanbul-publicness.github.io/
 **Data:** `data/cells.csv`, `data/cells.geojson`; ground plane as vector tiles in
 `tiles/`; the full ground plane as a GeoPackage in the archive linked below.
 **Rules:** `code/publicness_kurallar.xlsx`, where every decision was taken.
