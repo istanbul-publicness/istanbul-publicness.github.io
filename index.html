@@ -178,7 +178,7 @@ map.on("load", async () => {
   const groundIds = {far: [], near: []};
   for (const [cid, , far, near] of LAYERS) {
     for (const [id, file, zmin, zmax, kind] of [[cid + "-gfar", far, 11.6, 14, "far"], [cid + "-gnear", near, 14, 24, "near"]]) {
-      const pm = new pmtiles.PMTiles(new URL(file + "?v=db104307", location.href).href);
+      const pm = new pmtiles.PMTiles(new URL(file + "?v=80618e214b", location.href).href);
       try { await pm.getHeader(); } catch (err) { continue; }          // a layer not built yet
       protocol.add(pm);
       map.addSource(id, {type: "vector", url: "pmtiles://" + pm.source.getKey()});
@@ -195,7 +195,7 @@ map.on("load", async () => {
   const cellIds = [];
   for (const [cid, file, , , k] of LAYERS) {
     let data;
-    try { data = await (await fetch(file + "?v=db104307")).json(); } catch (err) { continue; }
+    try { data = await (await fetch(file + "?v=80618e214b")).json(); } catch (err) { continue; }
     map.addSource(cid, {type: "geojson", data, promoteId: "id"});
     map.addLayer({id: cid, type: "fill", source: cid,
                   paint: {"fill-color": cellColour(), "fill-opacity": cellOpacity(k)}});
