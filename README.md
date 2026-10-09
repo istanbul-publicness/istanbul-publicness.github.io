@@ -4,8 +4,9 @@ An open map and dataset of how public the ground of Istanbul is, cell by cell,
 read from the ground plane rather than from counts of venues.
 
 **Map:** https://istanbul-publicness.github.io/
-**Data:** `data/cells.csv`, `data/cells.geojson`; ground plane as vector tiles in
-`tiles/`; the full ground plane as a GeoPackage in the archive linked below.
+**Data:** `data/cells.csv` (the whole province), `data/cells.geojson` and
+`data/cells_il.geojson` (the two map layers); ground plane as vector tiles in
+`tiles/`; the full ground plane as GeoPackages in the archive linked below.
 **Rules:** `code/publicness_kurallar.xlsx`, where every decision was taken.
 
 > Author information is withheld while the associated paper is under
@@ -98,8 +99,9 @@ Grade **A**: missing-data range < 0.2 and rule range < 0.1; **B**: < 0.4 and
 | column | meaning |
 |---|---|
 | `cell_id`, `lon`, `lat` | grid cell (500 m) and its centre |
+| `kanit` | place evidence: `Foursquare + Overture` or `yalnız Overture` (Overture only) |
 | `P_ground` | cell score, 0–1 |
-| `P_yuzdelik` | percentile among cells shown with a score ("more public than X % of the city") |
+| `P_yuzdelik` | percentile among all scored cells of the province ("more public than X % of Istanbul") |
 | `P_lo`, `P_hi` | missing-data range |
 | `P_rule_lo`, `P_rule_hi` | rule range |
 | `guven` | grade A / B / C |
@@ -121,8 +123,17 @@ Ground classes in the vector tiles (`r`): `op` open-public, `qp` quasi-public,
 
 ## Coverage and limits
 
-- 28.79–29.27° E, 40.84–41.29° N — the extent of the Foursquare data; 5,499
-  cells at least a quarter on land.
+- The province of Istanbul: 21,932 cells at least a quarter on land, in two
+  layers. Inside 28.79–29.27° E, 40.84–41.29° N — the extent of the Foursquare
+  data — 5,499 cells read buildings from Foursquare and Overture places; the
+  other 16,433 from Overture places alone (column `kanit`).
+- Overture alone was tested where both sources exist (8 tiles, 383 scored
+  cells): no systematic shift in the score (median change +0.001, Spearman
+  0.996) but more buildings of unknown use (5.3 % → 8.6 % of the ground) and a
+  wider missing-data range (0.29 → 0.34). One percentile scale covers the whole
+  province, so the same P has the same percentile on either side of the line.
+- Most of the outer province is forest and farmland: 3,625 of its 16,433 cells
+  have enough scorable ground to be shown with a score.
 - Only the ground floor is read. Upper floors are not.
 - Where OpenStreetMap has not mapped a use, the ground stays *unmapped* and
   widens the missing-data range rather than being guessed.
@@ -160,7 +171,7 @@ included, so the last two steps run without rebuilding them.
 
 - OpenStreetMap © OpenStreetMap contributors, ODbL — Geofabrik extract of
   6 October 2026.
-- Overture Maps Foundation places and buildings, October 2026 release
+- Overture Maps Foundation places and buildings, release 2026-09-23
   (places CDLA-Permissive-2.0; buildings ODbL).
 - Foursquare Open Source Places (Apache 2.0).
 - Base map © CARTO; map built with MapLibre GL and PMTiles.

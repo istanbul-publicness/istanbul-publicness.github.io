@@ -17,6 +17,9 @@ DEFAULTS = {
     "foursquare_table": "poi_fsq_istanbul_dovey_v3",
     "overture_places": "inputs/overture/place_point.gpkg",
     "overture_buildings": "inputs/overture/building_polygon.gpkg",
+    # the same Overture release for the province strips the first export left out
+    "overture_places_ek": "inputs/overture/ek/place_point_ek.gpkg",
+    "overture_buildings_ek": "inputs/overture/ek/building_polygon_ek.gpkg",
     "pedestrian": "inputs/pedestrian_infrastructure.gpkg",     # crossings, footbridges, underpasses
     "land": "inputs/land.gpkg",                                # land polygon; the sea is what lies outside it
     "osm_pbf": "inputs/osm/turkey-latest.osm.pbf",

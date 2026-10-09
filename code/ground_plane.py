@@ -84,6 +84,9 @@ FSQ_GPKG = P["foursquare_places"]
 FSQ_TABLE = P["foursquare_table"]
 OVT_PLACES = P["overture_places"]
 OVT_BUILDINGS = P["overture_buildings"]
+# the province strips beyond the first Overture export, same release (2026-09-23.1)
+OVT_PLACES_ALL = [f for f in (OVT_PLACES, P["overture_places_ek"]) if f.exists()]
+OVT_BUILDINGS_ALL = [f for f in (OVT_BUILDINGS, P["overture_buildings_ek"]) if f.exists()]
 PEDESTRIAN = P["pedestrian"]
 MATCHES = HERE / "source_matches.csv"
 OSM_GPKG = P["osm_gpkg"]          # citywide, cut from the Geofabrik extract by extract_osm.py
@@ -576,8 +579,8 @@ def load_evidence(bbox, loc):
     min_conf = CLEAN["overture_min_conf"]
     ng_ov = set(CLEAN["non_ground_overture"])
     ov = {}
-    for blob, gid, bc, tax, conf, oname in gpkg_in_box(OVT_PLACES, bbox,
-                                                       ["id", "basic_cat", "taxonomy", "confidence", "names_pri"]):
+    for blob, gid, bc, tax, conf, oname in (row for f in OVT_PLACES_ALL for row in gpkg_in_box(
+            f, bbox, ["id", "basic_cat", "taxonomy", "confidence", "names_pri"])):
         x, y = gpkg_point(blob)
         if not (w <= x <= e and s <= y <= n):
             continue
@@ -605,6 +608,9 @@ def load_evidence(bbox, loc):
         ov[gid] = [Point(loc.fwd(x, y)), reg, "overture", bc, oname]
         tally["Overture: kullanıldı"] += 1
 
+    if not USE_FOURSQUARE:          # the province layer beyond Foursquare's extent, and its test
+        recs = list(ov.values())
+        return [tuple(v[:4]) for v in recs], tally, dropped, [v[4] for v in recs]
     m = matches()
     ng_fsq = set(CLEAN["non_ground_fsq"])
     stale = CLEAN.get("stale_before")
@@ -646,7 +652,7 @@ def microsoft_buildings(bbox, loc, osm_geoms):
     """Overture footprints from Microsoft's model, where OSM has no building."""
     tree = shapely.STRtree(osm_geoms) if osm_geoms else None
     out = []
-    for blob, src in gpkg_in_box(OVT_BUILDINGS, bbox, ["sources"]):
+    for blob, src in (row for f in OVT_BUILDINGS_ALL for row in gpkg_in_box(f, bbox, ["sources"])):
         if "OpenStreetMap" in str(src):
             continue
         g = loc.geom(gpkg_geom(blob))
@@ -752,6 +758,7 @@ def osm_from_gpkg(path, bbox, loc):
 
 # ---------------------------------------------------------------- preparation
 
+USE_FOURSQUARE = True       # False: Overture alone, as beyond Foursquare's extent
 CORRECTIONS = HERE / "duzeltme_alanlari.gpkg"
 _LABEL = {"açık-kamusal": "open_public", "yarı-kamusal": "quasi_public", "biletli": "ticketed",
           "açık-özel": "open_private", "davetli": "invitation", "erişimsiz": "inaccessible"}
@@ -1065,6 +1072,7 @@ def compute_box(D, cells, outdir, prefix, label, verbose=True, write_layers=True
            "corrections_sha256": (__import__("hashlib").sha256(CORRECTIONS.read_bytes()).hexdigest()
                                   if CORRECTIONS.exists() else None),
            "d19_sites": [n for *_, n in D.get("d19", [])],
+           "place_sources": "Foursquare + Overture" if USE_FOURSQUARE else "Overture only",
            "evidence": dict(tally), "buildings": dict(b_source), "microsoft_added": D["n_microsoft"],
            "control_unknown_sites": len(D["control_unknown"]), "cells": len(out),
            "grades": dict(Counter(r["guven"] for r in out))}

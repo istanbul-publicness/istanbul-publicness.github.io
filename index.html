@@ -60,13 +60,14 @@
 
   <h2>Colour cells by</h2>
   <div class="seg" id="mode">
-    <button data-m="pct" class="on">percentile in the city</button>
+    <button data-m="pct" class="on">percentile in Istanbul</button>
     <button data-m="P">score P (0–1)</button>
   </div>
   <div class="ramp"></div>
   <div class="ends" id="ends"><span>least public</span><span>median</span><span>most public</span></div>
   <div class="key" style="margin-top:7px"><span class="sw hatch"></span>grade C: wide uncertainty — read with care</div>
   <div class="key"><span class="sw" style="background:#bdbcb5"></span>insufficient evidence (under 1/10 of the ground scorable)</div>
+  <div class="key"><span class="sw" style="border:2px dashed #12120f;background:none"></span>inside: Foursquare and Overture places · outside: Overture places only (paler)</div>
   <p class="hint">Zoom in (from about the district scale) and the painted ground
      replaces the cells.</p>
 
@@ -92,9 +93,14 @@
       <a href="code/publicness_kurallar.xlsx" download>rules workbook</a> (every
       decision and dictionary entry) · ground plane GeoPackage (486 MB, archive
       link to follow). Code and rules are in this site's repository.</p>
-    <p class="sub" style="margin:8px 0 0">Coverage: 28.79–29.27°E, 40.84–41.29°N,
-      the extent of the Foursquare data. OpenStreetMap © contributors (ODbL),
-      Geofabrik extract of 6 Oct 2026; Overture Maps places and buildings, Oct 2026;
+    <p class="sub" style="margin:8px 0 0">Coverage: the province of Istanbul. Inside the
+      dashed frame (28.79–29.27°E, 40.84–41.29°N, the extent of the Foursquare data)
+      buildings are read from Foursquare and Overture places; outside it from
+      Overture alone. Tested where both exist, Overture alone shifts no score
+      systematically (median change 0.001) but leaves more buildings of unknown
+      use, so the uncertainty ranges are wider. One percentile scale covers the
+      whole province. OpenStreetMap © contributors (ODbL),
+      Geofabrik extract of 6 Oct 2026; Overture Maps places and buildings, release 2026-09-23;
       Foursquare Open Source Places. Base map © CARTO. Rules version db104307.</p>
   </details>
 </aside>
@@ -117,7 +123,11 @@ const REG = [
   ["do", "natural",          "#c9d3b8", "forest / farmland"],
   ["um", "unmapped",         "#f1f0eb", "unmapped"],
 ];
-const BBOX = [28.79, 40.84, 29.27, 41.29];
+const BBOX = [27.95, 40.78, 29.97, 41.60];          // the province
+const FSQ = [28.79, 40.84, 29.27, 41.29];           // the Foursquare extent
+// [cells file, ground far, ground near, opacity factor]: the province layer is drawn paler
+const LAYERS = [["cells", "data/cells.geojson", "tiles/ground_far.pmtiles", "tiles/ground.pmtiles", 1],
+                ["cells-il", "data/cells_il.geojson", "tiles/ground_il_far.pmtiles", "tiles/ground_il.pmtiles", 0.72]];
 const GRADE_COL = {A: "#0f6e56", B: "#b8860b", C: "#a32d2d"};
 const RAMP_STOPS = ["#a32d2d", "#e34948", "#d8d6cd", "#5dcaa5", "#0f6e56"];
 let mode = "pct";
@@ -129,7 +139,7 @@ const ramp = () => mode === "pct"
      0, RAMP_STOPS[0], 0.25, RAMP_STOPS[1], 0.5, RAMP_STOPS[2], 0.75, RAMP_STOPS[3], 1, RAMP_STOPS[4]];
 const cellColour = () => ["case", ["!=", ["get", "gosterim"], "puan"], "#bdbcb5", ramp()];
 // cells give way to the painted ground between zoom 11.6 and 12.8
-const cellOpacity = ["interpolate", ["linear"], ["zoom"], 9, 0.74, 11.6, 0.66, 12.8, 0.01];  // not 0: an invisible fill is not clickable
+const cellOpacity = (k = 1) => ["interpolate", ["linear"], ["zoom"], 9, 0.74 * k, 11.6, 0.66 * k, 12.8, 0.01];  // not 0: an invisible fill is not clickable
 const hatchOpacity = ["interpolate", ["linear"], ["zoom"], 9, 0.55, 11.6, 0.45, 12.8, 0];
 
 // diagonal hatch for grade C, drawn once onto a canvas
@@ -162,42 +172,63 @@ map.on("load", async () => {
 
   // ground plane: two vector-tile archives — z12-13 simplified, z14-15 full
   // detail (overzoomed beyond) — kept apart so each stays under 100 MB
+  // ground plane: per layer two vector-tile archives — z12-13 simplified, z14-15
+  // full detail (overzoomed beyond) — kept apart so each stays under 100 MB
   const groundColour = ["match", ["get", "r"], ...REG.flatMap(([c, , col]) => [c, col]), "#ffffff"];
-  for (const [id, file, zmin, zmax] of [["ground-far", "tiles/ground_far.pmtiles", 11.6, 14],
-                                        ["ground", "tiles/ground.pmtiles", 14, 24]]) {
-    const pm = new pmtiles.PMTiles(new URL(file, location.href).href);
-    protocol.add(pm);
-    map.addSource(id, {type: "vector", url: "pmtiles://" + pm.source.getKey()});
-    map.addLayer({
-      id, type: "fill", source: id, "source-layer": "zemin", minzoom: zmin, maxzoom: zmax,
-      paint: {"fill-color": groundColour, "fill-outline-color": "rgba(0,0,0,0)",
-              "fill-opacity": ["interpolate", ["linear"], ["zoom"], 11.6, 0, 12.6, 0.9]},
-    });
+  const groundIds = {far: [], near: []};
+  for (const [cid, , far, near] of LAYERS) {
+    for (const [id, file, zmin, zmax, kind] of [[cid + "-gfar", far, 11.6, 14, "far"], [cid + "-gnear", near, 14, 24, "near"]]) {
+      const pm = new pmtiles.PMTiles(new URL(file + "?v=db104307", location.href).href);
+      try { await pm.getHeader(); } catch (err) { continue; }          // a layer not built yet
+      protocol.add(pm);
+      map.addSource(id, {type: "vector", url: "pmtiles://" + pm.source.getKey()});
+      map.addLayer({
+        id, type: "fill", source: id, "source-layer": "zemin", minzoom: zmin, maxzoom: zmax,
+        paint: {"fill-color": groundColour, "fill-outline-color": "rgba(0,0,0,0)",
+                "fill-opacity": ["interpolate", ["linear"], ["zoom"], 11.6, 0, 12.6, 0.9]},
+      });
+      groundIds[kind].push(id);
+    }
   }
   map.addImage("hatch", hatchImage());
 
-  const cells = await (await fetch("data/cells.geojson")).json();
-  map.addSource("cells", {type: "geojson", data: cells, promoteId: "id"});
-  map.addLayer({id: "cells", type: "fill", source: "cells",
-                paint: {"fill-color": cellColour(), "fill-opacity": cellOpacity}});
-  map.addLayer({id: "cells-hatch", type: "fill", source: "cells",
-                filter: ["all", ["==", ["get", "guven"], "C"], ["==", ["get", "gosterim"], "puan"]],
-                paint: {"fill-pattern": "hatch", "fill-opacity": hatchOpacity}});
-  map.addLayer({id: "cells-line", type: "line", source: "cells", minzoom: 13,
-                paint: {"line-color": "#12120f", "line-opacity": 0.55, "line-width": 0.8,
-                        "line-dasharray": [4, 3]}});
-  map.addLayer({id: "cell-sel", type: "line", source: "cells", filter: ["==", ["get", "id"], ""],
-                paint: {"line-color": "#1d6fe0", "line-width": 3.2}});   // blue: no regime uses it
+  const cellIds = [];
+  for (const [cid, file, , , k] of LAYERS) {
+    let data;
+    try { data = await (await fetch(file + "?v=db104307")).json(); } catch (err) { continue; }
+    map.addSource(cid, {type: "geojson", data, promoteId: "id"});
+    map.addLayer({id: cid, type: "fill", source: cid,
+                  paint: {"fill-color": cellColour(), "fill-opacity": cellOpacity(k)}});
+    map.addLayer({id: cid + "-hatch", type: "fill", source: cid,
+                  filter: ["all", ["==", ["get", "guven"], "C"], ["==", ["get", "gosterim"], "puan"]],
+                  paint: {"fill-pattern": "hatch", "fill-opacity": hatchOpacity}});
+    map.addLayer({id: cid + "-line", type: "line", source: cid, minzoom: 13,
+                  paint: {"line-color": "#12120f", "line-opacity": 0.55, "line-width": 0.8,
+                          "line-dasharray": [4, 3]}});
+    map.addLayer({id: cid + "-sel", type: "line", source: cid, filter: ["==", ["get", "id"], ""],
+                  paint: {"line-color": "#1d6fe0", "line-width": 3.2}});   // blue: no regime uses it
+    cellIds.push(cid);
+  }
+  // the edge of the Foursquare extent, where the evidence changes
+  const [fw, fs, fe, fn] = FSQ;
+  map.addSource("fsq", {type: "geojson", data: {type: "Feature", properties: {}, geometry: {
+    type: "LineString", coordinates: [[fw, fs], [fe, fs], [fe, fn], [fw, fn], [fw, fs]]}}});
+  map.addLayer({id: "fsq", type: "line", source: "fsq", maxzoom: 13,
+                paint: {"line-color": "#12120f", "line-width": 1.2, "line-dasharray": [5, 4], "line-opacity": 0.7}});
 
   map.on("click", e => {
-    const hit = map.queryRenderedFeatures(e.point, {layers: ["cells"]})[0];
-    const g = map.getZoom() >= 11.6
-      ? map.queryRenderedFeatures(e.point, {layers: [map.getZoom() >= 14 ? "ground" : "ground-far"]})[0] : null;
-    if (hit) { map.setFilter("cell-sel", ["==", ["get", "id"], hit.properties.id]); showCell(hit.properties, g); }
+    const hit = map.queryRenderedFeatures(e.point, {layers: cellIds})[0];
+    const z = map.getZoom();
+    const g = z >= 11.6 ? map.queryRenderedFeatures(e.point, {layers: z >= 14 ? groundIds.near : groundIds.far})[0] : null;
+    if (hit) {
+      for (const c of cellIds) map.setFilter(c + "-sel", ["==", ["get", "id"], c === hit.layer.id ? hit.properties.id : ""]);
+      showCell(hit.properties, g);
+    }
   });
   map.on("mousemove", e => {
-    map.getCanvas().style.cursor = map.queryRenderedFeatures(e.point, {layers: ["cells"]}).length ? "pointer" : "";
+    map.getCanvas().style.cursor = map.queryRenderedFeatures(e.point, {layers: cellIds}).length ? "pointer" : "";
   });
+  window._cellIds = cellIds;
   buildRegimes();
   bindMode();
 });
@@ -209,7 +240,7 @@ function bindMode() {
     document.getElementById("ends").innerHTML = mode === "pct"
       ? "<span>least public</span><span>median</span><span>most public</span>"
       : "<span>0 inaccessible</span><span>0.5</span><span>1 open-public</span>";
-    map.setPaintProperty("cells", "fill-color", cellColour());
+    for (const c of window._cellIds || []) map.setPaintProperty(c, "fill-color", cellColour());
   });
 }
 
@@ -235,7 +266,7 @@ function showCell(p, ground) {
     ${gLab ? `<p class="hint" style="margin:2px 0 0">Selected ground: <b>${gLab}</b></p>` : ""}
     ${shown
       ? `<p class="big">${p.P_yuzdelik !== null ? Math.round(p.P_yuzdelik) + "<small>th percentile</small>" : "—"}</p>
-         <p class="hint" style="margin:2px 0 0">more public than ${Math.round(p.P_yuzdelik)}% of scored cells</p>`
+         <p class="hint" style="margin:2px 0 0">more public than ${Math.round(p.P_yuzdelik)}% of Istanbul's scored cells</p>`
       : `<p class="big" style="color:#8e8d87">insufficient evidence</p>
          <p class="hint" style="margin:2px 0 0">only ${pc(p.scored_share)} of the ground can be scored</p>`}
     <dl>
@@ -243,6 +274,7 @@ function showCell(p, ground) {
       <dt>missing-data range</dt><dd>${f2(p.P_lo)} – ${f2(p.P_hi)}</dd>
       <dt>rule range</dt><dd>${f2(p.P_rule_lo)} – ${f2(p.P_rule_hi)}</dd>
       <dt>scored ground</dt><dd>${pc(p.scored_share)} of the cell's land</dd>
+      <dt>place evidence</dt><dd>${p.kanit === "yalnız Overture" ? "Overture only" : "Foursquare and Overture"}</dd>
     </dl>
     <h2 style="margin-top:12px">Ground composition</h2>
     <div class="bar">${bar}</div>

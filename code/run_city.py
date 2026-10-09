@@ -12,6 +12,7 @@ Memory, not CPU, limits the number of workers: a dense tile can take over a
 gigabyte. Three is safe with other programs open.
 
 Run:  py run_city.py foursquare 3
+      py run_city.py il_ek 3        (the province beyond the Foursquare extent, Overture only)
 """
 
 import csv
@@ -55,6 +56,8 @@ def work(tile, outdir):
     sys.path.insert(0, str(HERE))
     import ground_plane as gp
     t0 = time.time()
+    # beyond the Foursquare extent only Overture places exist; the run says so in run.json
+    gp.USE_FOURSQUARE = not Path(outdir).name.startswith("il")
     try:
         D = gp.prepare_box(tile["bbox"], gp.OSM_GPKG)
         rows = gp.compute_box(D, tile["cells"], outdir, tile["id"], tile["id"], verbose=False)
