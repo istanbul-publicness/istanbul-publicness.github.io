@@ -46,11 +46,11 @@ OUT = HERE / "harita"
 GROUND_DIR = run_city.TILES / "harita"
 QGIS = run_city.P["qgis"]
 CODE = {"open_public": "op", "quasi_public": "qp", "ticketed": "ti", "open_private": "pr",
-        "invitation": "in", "inaccessible": "na", "yard": "ya", "car": "ca", "natural": "do",
+        "invitation": "in", "inaccessible": "na", "yard": "ya", "coast": "ks", "car": "ca", "natural": "do",
         "unknown_building": "ub", "unmapped": "um"}
 KEEP = ["P_ground", "P_lo", "P_hi", "P_rule_lo", "P_rule_hi", "guven", "gosterim", "scored_share",
         "sh_open_public", "sh_quasi_public", "sh_ticketed", "sh_open_private", "sh_invitation",
-        "sh_inaccessible", "sh_yard", "sh_car", "sh_natural", "sh_unknown_building", "sh_unmapped",
+        "sh_inaccessible", "sh_yard", "sh_coast", "sh_car", "sh_natural", "sh_unknown_building", "sh_unmapped",
         "bar_major_m", "bar_rail_m", "bar_pieces", "bar_level", "bar_passes"]
 
 

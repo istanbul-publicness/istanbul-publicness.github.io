@@ -173,6 +173,10 @@ NATURAL = {**{("landuse", v): "natural" for v in ("forest", "meadow", "farmland"
            ("man_made", "clearcut"): "natural", ("landuse", "grass"): "open_public"}
 MIN_SCORED = 0.10        # D16: below this scored share of the ground a cell is shown as 'kanıt yetersiz'
 URBAN_FOREST_M2 = 500_000  # D18: forest under 50 ha is an urban grove, open-public; larger stays out
+COAST_M = 30.0             # D21: the coastal strip painted open-public where OSM leaves it unmapped
+# D21: the Bosphorus and its shores — north of the Sarayburnu–Harem line, south of the
+# Rumeli Feneri–Anadolu Feneri line, east of the Golden Horn's mouth (lon, lat)
+BOSPHORUS = box(28.990, 41.012, 29.150, 41.232)
 AIRFIELD = {"runway", "taxiway", "apron", "helipad", "airstrip", "stopway"}
 AIR_W = {"runway": 45.0, "taxiway": 23.0, "stopway": 45.0, "airstrip": 30.0}
 CAR_W = {"motorway": 14, "trunk": 14, "primary": 12, "secondary": 10, "tertiary": 8,
@@ -486,8 +490,66 @@ CONTROL_UNKNOWN = []
 
 def site_index(classified):
     """Named sites with their regime, for buildings that stand inside them."""
-    sites = [(g, key.split("_", 1)[1]) for key, g, _ in classified if key.startswith(("p02_", "p09_"))]
+    sites = [(g, key.split("_", 1)[1]) for key, g, _ in classified if key.startswith(("p01k_", "p02_", "p09_"))]
     return shapely.STRtree([g for g, _ in sites]), sites
+
+
+# ---------------------------------------------------------------- D19
+
+D19_NEAR_M = 25.0
+D19_SIM = 0.85
+D19_M2 = (500.0, 1_000_000.0)          # a site, not a building corner or a district
+# a café, an ATM or a kiosk inside a site does not speak for the whole site
+D19_PART = re.compile(r"atm|bank|cafe|caf.|coffee|restaurant|food|bar\b|pub|bakery|kiosk|store|shop|market|"
+                      r"boutique|storage|media|home_service|office|b2b|manufactur|dealer|repair|automotive|"
+                      r"salon|barber|pharmacy|dentist|doctor|clinic|gas|fuel|laundry|hotel", re.I)
+_TR = str.maketrans("çğıöşüâîû", "cgiosuaiu")
+
+
+def name_key(s):
+    s = str(s or "").replace("İ", "i").replace("I", "ı").lower().translate(_TR)
+    return re.sub(r"[^a-z0-9]+", " ", s).strip()
+
+
+def site_names(shapes, evidence, names):
+    """D19. A named OSM area that no rule reads takes the regime of the place
+    records inside it (or within 25 m) that carry the same name — a converted
+    site such as Çubuklu Silolar, whose OSM tags still say oil tanks. Votes as
+    D08: most frequent regime, ties to the more public. The workbook's
+    d19_adaylar sheet can set another regime for a site or turn it off."""
+    from difflib import SequenceMatcher
+    cand = [(el, t, g) for el, t, g, rules in shapes
+            if not rules and t.get("name") and g.geom_type in ("Polygon", "MultiPolygon")
+            and D19_M2[0] <= g.area <= D19_M2[1]]
+    if not cand:
+        return []
+    tree = shapely.STRtree([g for *_, g in cand])
+    votes = defaultdict(list)
+    for (pt, reg, src, cat), nm in zip(evidence, names):
+        if not reg or reg == "exclude" or not nm or D19_PART.search(cat or ""):
+            continue
+        a = name_key(nm)
+        if len(a) < 6:
+            continue
+        for i in tree.query(pt, predicate="dwithin", distance=D19_NEAR_M):
+            b = name_key(cand[i][1]["name"])
+            if len(b) >= 6 and SequenceMatcher(None, a, b).ratio() >= D19_SIM:
+                votes[i].append((reg, f"{nm} ({src}, {cat})"))
+    rank = {r: k for k, r in enumerate(REGIMES)}
+    out = []
+    for i, v in votes.items():
+        el, t, g = cand[i]
+        c = Counter(r for r, _ in v)
+        top = max(c.values())
+        reg = min((r for r, n in c.items() if n == top), key=rank.get)
+        review = RULES.get("d19", {}).get(t["name"])
+        if review == "off":
+            continue
+        if review in REGIMES:
+            reg = review
+        out.append((f"p09_{reg}", g, f"D19 ad eşleşmesi: {t['name']} ← {v[0][1]}"
+                                     + (" · gözden geçirildi" if review else "")))
+    return out
 
 
 # ---------------------------------------------------------------- evidence
@@ -505,15 +567,17 @@ def matches():
 
 def load_evidence(bbox, loc):
     """D09. Place records that say what a ground floor is, cleaned and with
-    each place counted once. Returns (evidence, tally, dropped):
+    each place counted once. Returns (evidence, tally, dropped, names):
         evidence  [(Point, regime or None, source, category)]
-        dropped   [(lon, lat, category, source, reason)]"""
+        dropped   [(lon, lat, category, source, reason)]
+        names     the record names, in the order of evidence (for D19)"""
     tally, dropped = Counter(), []
     s, w, n, e = bbox
     min_conf = CLEAN["overture_min_conf"]
     ng_ov = set(CLEAN["non_ground_overture"])
     ov = {}
-    for blob, gid, bc, tax, conf in gpkg_in_box(OVT_PLACES, bbox, ["id", "basic_cat", "taxonomy", "confidence"]):
+    for blob, gid, bc, tax, conf, oname in gpkg_in_box(OVT_PLACES, bbox,
+                                                       ["id", "basic_cat", "taxonomy", "confidence", "names_pri"]):
         x, y = gpkg_point(blob)
         if not (w <= x <= e and s <= y <= n):
             continue
@@ -538,7 +602,7 @@ def load_evidence(bbox, loc):
             tally[reason] += 1
             dropped.append((x, y, bc, "overture", reason))
             continue
-        ov[gid] = [Point(loc.fwd(x, y)), reg, "overture", bc]
+        ov[gid] = [Point(loc.fwd(x, y)), reg, "overture", bc, oname]
         tally["Overture: kullanıldı"] += 1
 
     m = matches()
@@ -546,8 +610,8 @@ def load_evidence(bbox, loc):
     stale = CLEAN.get("stale_before")
     con = sqlite3.connect(f"file:{FSQ_GPKG}?mode=ro", uri=True)
     fsq = []
-    for pid, lon, lat, cat, closed, refreshed in con.execute(
-            f'SELECT place_id, longitude, latitude, cat_name, closed, refreshed FROM "{FSQ_TABLE}" '
+    for pid, lon, lat, cat, closed, refreshed, fname in con.execute(
+            f'SELECT place_id, longitude, latitude, cat_name, closed, refreshed, name FROM "{FSQ_TABLE}" '
             "WHERE latitude BETWEEN ? AND ? AND longitude BETWEEN ? AND ?", (s, n, w, e)):
         reg = FSQ_DICT.get(cat)
         oid = m.get(pid)
@@ -571,11 +635,11 @@ def load_evidence(bbox, loc):
             if not reason.endswith("tek sayıldı"):
                 dropped.append((lon, lat, cat, "foursquare", reason))
             continue
-        fsq.append((Point(loc.fwd(lon, lat)), reg, "foursquare", cat))
+        fsq.append((Point(loc.fwd(lon, lat)), reg, "foursquare", cat, fname))
         tally["Foursquare: kullanıldı"] += 1
     con.close()
-    evidence = [tuple(v) for v in ov.values()] + fsq
-    return evidence, tally, dropped
+    recs = list(ov.values()) + fsq
+    return [tuple(v[:4]) for v in recs], tally, dropped, [v[4] for v in recs]
 
 
 def microsoft_buildings(bbox, loc, osm_geoms):
@@ -688,6 +752,24 @@ def osm_from_gpkg(path, bbox, loc):
 
 # ---------------------------------------------------------------- preparation
 
+CORRECTIONS = HERE / "duzeltme_alanlari.gpkg"
+_LABEL = {"açık-kamusal": "open_public", "yarı-kamusal": "quasi_public", "biletli": "ticketed",
+          "açık-özel": "open_private", "davetli": "invitation", "erişimsiz": "inaccessible"}
+
+
+def drawn_corrections(bbox, loc):
+    """Polygons drawn by hand with their real regime, a source and a date."""
+    if not CORRECTIONS.exists():
+        return []
+    out = []
+    for blob, reg, src, date in gpkg_in_box(CORRECTIONS, bbox, ["rejim", "kaynak", "tarih"], table="duzeltme"):
+        reg = _LABEL.get(str(reg or "").strip(), reg)
+        if reg in REGIMES:
+            g = loc.geom(gpkg_geom(blob))
+            out.append((f"p01k_{reg}", g if g.is_valid else g.buffer(0), f"çizilmiş düzeltme: {src or '?'}, {date or '?'}"))
+    return out
+
+
 def prepare(name):
     """A named box: a test box from its Overpass download, or a close-reading
     sample from the citywide GeoPackage."""
@@ -712,12 +794,25 @@ def prepare_box(bbox, source):
     shapes = [(el, t, g, classify(t, g)) for el, t, g in raw]
 
     classified = [r for *_, rules in shapes for r in rules if r[0] != "building"]
+    # hand corrections (workbook sheet 'duzeltmeler'), painted above everything but water
+    fixes = RULES.get("duzeltme", {})
+    if fixes:
+        for el, t, g, _ in shapes:
+            key = next((k for k in (f"{el['type'][0]}{el['id']}", t.get("name")) if k and k in fixes), None)
+            if key and g.geom_type in ("Polygon", "MultiPolygon"):
+                classified.append((f"p01k_{fixes[key]}", g, f"elle düzeltme: {key}"))
+    # hand-drawn corrections (duzeltme_alanlari.gpkg): ground the rules cannot know
+    classified += drawn_corrections(bbox, loc)
     sites = site_index(classified)
     buildings = [(el, t, r[1]) for el, t, _, rules in shapes for r in rules if r[0] == "building"]
     ms = microsoft_buildings(bbox, loc, [g for *_, g in buildings])
     buildings += [(None, {"building": "yes", "source": "Microsoft ML"}, g) for g in ms]
 
-    evidence, tally, dropped = load_evidence(bbox, loc)
+    evidence, tally, dropped, names = load_evidence(bbox, loc)
+    d19 = site_names(shapes, evidence, names)                                       # D19
+    if d19:
+        classified += d19
+        sites = site_index(classified)
     votes = assign_evidence([g for *_, g in buildings], evidence)
     b_regimes = [building_regime(t, g, votes.get(i, []), sites) for i, (_, t, g) in enumerate(buildings)]
 
@@ -740,7 +835,7 @@ def prepare_box(bbox, source):
     return {"name": None, "bbox": bbox, "loc": loc, "frame": frame, "shapes": shapes,
             "classified": classified, "buildings": buildings, "b_regimes": b_regimes,
             "n_microsoft": len(ms), "evidence": evidence, "tally": tally, "dropped": dropped,
-            "votes": votes, "barrier": barrier, "control_unknown": list(CONTROL_UNKNOWN)}
+            "votes": votes, "barrier": barrier, "control_unknown": list(CONTROL_UNKNOWN), "d19": d19}
 
 
 def crossings(bbox, loc):
@@ -781,9 +876,11 @@ def score(sh, sc):
 
 def cell_estimate(share, ground):
     """Point estimate with its two uncertainty ranges and a confidence grade.
-    `share` is regime -> fraction of the cell; yards fold into invitation."""
+    `share` is regime -> fraction of the cell; yards fold into invitation and
+    the modelled coastal strip (D21) into open-public."""
     known = {r: share.get(r, 0.0) for r in REGIMES}
     known["invitation"] += share.get("yard", 0.0)
+    known["open_public"] += share.get("coast", 0.0)
     K = sum(known.values())
     u = share.get("unknown_building", 0.0) + share.get("unmapped", 0.0)
     S = sum(SCORE[r] * known[r] for r in REGIMES)
@@ -815,6 +912,27 @@ def paint(D):
     for (_, t, g), (regime, source, _) in zip(D["buildings"], D["b_regimes"]):
         layers[f"p05_{regime}"].append(g)
         b_source[source + (" (Microsoft)" if t.get("source") == "Microsoft ML" else "")] += 1
+
+    # D20: OSM draws military land loosely; a park, mosque, cemetery or square
+    # mapped inside it is a public enclave and is painted before the military
+    # land around it (Hz. Yuşa Tepesi inside the Bosphorus Command)
+    mil = [g for k in layers if k.startswith("p02_") for g in layers[k]]
+    if mil:
+        mil_tree = shapely.STRtree(mil)
+        for key in ("p05_open_public", "p08_open_public", "p09_open_public"):
+            layers["p01m_open_public"] += [g for g in layers.get(key, [])
+                                           if len(mil_tree.query(g, predicate="intersects"))]
+
+    # D21: the first 30 m of land from the sea shore is public by the Coastal Law
+    # (Kıyı Kanunu 3621); where OSM leaves it unmapped it is painted open-public,
+    # as its own class so the map shows it is modelled. Painted last, it takes
+    # only ground no other rule reads. The Bosphorus is left out: unmapped ground
+    # there is as likely a yalı garden as a promenade.
+    if sea is not None and not sea.is_empty:
+        strip = robust(shapely.difference, sea.buffer(COAST_M), sea)
+        bos = loc.geom(BOSPHORUS)
+        strip = robust(shapely.difference, strip, bos) if strip.intersects(bos) else strip
+        layers["p16_coast"].append(strip)
 
     painted, taken = {}, Polygon()
     for key in sorted(layers):
@@ -900,6 +1018,7 @@ def cell_row(D, painted, B, cell):
         "P_ground_bld": rnd(var["bld_konut"]),
         **{f"sh_{r}": round(sh.get(r, 0.0), 3) for r in REGIMES},
         "sh_yard": round(sh.get("yard", 0.0), 3),
+        "sh_coast": round(sh.get("coast", 0.0), 3),
         "sh_car": round(sh.get("car", 0.0), 3),
         "sh_natural": round(sh.get("natural", 0.0), 3),
         "sh_unknown_building": round(sh.get("unknown_building", 0.0), 3),
@@ -943,6 +1062,9 @@ def compute_box(D, cells, outdir, prefix, label, verbose=True, write_layers=True
     tally = D["tally"]
     run = {"box": label, "bbox": D["bbox"], "rules_source": RULES["source"], "rules_sha256": RULES["sha256"],
            "rules_compiled": RULES["compiled"], "scores": SCORE,
+           "corrections_sha256": (__import__("hashlib").sha256(CORRECTIONS.read_bytes()).hexdigest()
+                                  if CORRECTIONS.exists() else None),
+           "d19_sites": [n for *_, n in D.get("d19", [])],
            "evidence": dict(tally), "buildings": dict(b_source), "microsoft_added": D["n_microsoft"],
            "control_unknown_sites": len(D["control_unknown"]), "cells": len(out),
            "grades": dict(Counter(r["guven"] for r in out))}

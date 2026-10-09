@@ -117,10 +117,27 @@ def main():
             if name and c in ("kamu", "özel"):
                 control[str(name).strip()] = "public" if c == "kamu" else "private"
 
+    # D19 review: a regime for a matched site, or 'uygulama' to leave it as it was
+    d19 = {}
+    if "d19_adaylar" in wb.sheetnames:
+        for r in rows(wb["d19_adaylar"]):
+            k = str(r.get("KARAR (siz)") or "").strip()
+            if r.get("Alan") and k:
+                d19[str(r["Alan"]).strip()] = "off" if k.lower() == "uygulama" else code(k, f"d19 {r['Alan']}")
+
+    # hand corrections: an OSM element (w123 / r456) or a name, and the regime it really has
+    fixes = {}
+    if "duzeltmeler" in wb.sheetnames:
+        for r in rows(wb["duzeltmeler"]):
+            key = str(r.get("OSM no ya da ad") or "").strip()
+            if key and r.get("Rejim"):
+                fixes[key] = code(r["Rejim"], f"düzeltme {key}")
+
     out = {"source": BOOK.name, "sha256": sha,
            "compiled": datetime.datetime.now().isoformat(timespec="seconds"),
            "scores": scores, "sensitivity": sens, "decisions": decisions, "osm": osm,
-           "overture": overture, "foursquare": foursquare, "cleaning": clean, "control": control}
+           "overture": overture, "foursquare": foursquare, "cleaning": clean, "control": control,
+           "d19": d19, "duzeltme": fixes}
     OUT.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
 
     def tally(d):
@@ -132,6 +149,7 @@ def main():
     print(f"yazıldı: {OUT.name} · kaynak {BOOK.name} · sha256 {sha[:12]}")
     print(f"puanlar: " + ", ".join(f"{k} {v:.3f}" for k, v in scores.items()))
     print(f"kararlar: {sum(1 for v in decisions.values() if v)}/{len(decisions)} dolu")
+    print(f"D19 gözden geçirme: {len(d19)} karar · elle düzeltme: {len(fixes)}")
     print(f"kontrol: {len(control)} mekân ({', '.join(f'{k} → {v}' for k, v in control.items())})")
     print(f"OSM kuralı {len(osm)} · Overture {len(overture)} ({tally(overture)})")
     print(f"Foursquare {len(foursquare)} ({tally(foursquare)})")

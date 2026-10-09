@@ -1,7 +1,7 @@
 {
  "source": "publicness_kurallar.xlsx",
- "sha256": "d39e772c83327db458561651e398991b19695c332514df34ee655e56c85d3fc5",
- "compiled": "2026-10-08T10:19:57",
+ "sha256": "db104307c0a2e801ece365913e2747f930ca44e5b9e319946d8f25bdb6fbd7ff",
+ "compiled": "2026-10-08T22:34:28",
  "scores": {
   "open_public": 1.0,
   "quasi_public": 0.469,
@@ -54,7 +54,10 @@
   "D15": "kentteki çim açık-kamusal, gerisi skor dışı",
   "D16": "%10 altı kanıt yetersiz",
   "D17": "açık-kamusal, ücretliyse biletli",
-  "D18": "50 ha altı açık-kamusal"
+  "D18": "50 ha altı açık-kamusal",
+  "D19": "uygula",
+  "D20": "uygula",
+  "D21": "30 m, Boğaz hariç"
  },
  "osm": {
   "landuse=military": "inaccessible",
@@ -1480,5 +1483,18 @@
  },
  "control": {
   "Müze Gazhane": "public"
+ },
+ "d19": {
+  "Marintürk İstanbul City Port": "quasi_public",
+  "Setur Fenerbahçe Marina": "quasi_public",
+  "Setur Kalamış Marina": "quasi_public",
+  "Ataköy Marina": "quasi_public",
+  "Galataport": "open_public",
+  "İstinye Marina": "quasi_public",
+  "Tarabya Marina": "quasi_public",
+  "Çubuklu Siloları": "open_public"
+ },
+ "duzeltme": {
+  "Çubuklu Siloları": "open_public"
  }
 }

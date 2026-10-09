@@ -64,6 +64,14 @@ C is control. Open-private sits above quasi-public because quasi-public space
 | D16 | a cell whose scorable ground is under a tenth of its land is shown as *insufficient evidence* |
 | D17 | beaches open-public; with `fee=yes` ticketed |
 | D18 | forest under 50 ha (an urban grove, *koru*) open-public |
+| D19 | a named OSM site no rule reads takes the regime of the place records inside it (or within 25 m) that carry the same name — a converted site such as Çubuklu Silolar, whose OSM tags still describe oil tanks; cafés, ATMs and kiosks inside a site do not count; reviewed site by site in the workbook |
+| D20 | a park, mosque, cemetery or square mapped inside military land is a public enclave, painted before the military land around it |
+| D21 | the first 30 m of land from the sea shore, where OSM leaves it unmapped, is open-public under the Coastal Law (Kıyı Kanunu 3621) — a class of its own on the map; the Bosphorus is excluded, where unmapped shore is as likely a private garden |
+
+Hand corrections — ground the rules cannot know, such as a public hilltop
+inside a loosely drawn military outline — are drawn as polygons in
+`code/duzeltme_alanlari.gpkg` with their regime, source and date, and painted
+above everything but water.
 
 Every OSM tag rule, the 248 Overture and 979 Foursquare category assignments,
 the cleaning rules and the reviewers' overrides are in the workbook. `rules.json`
@@ -98,7 +106,7 @@ Grade **A**: missing-data range < 0.2 and rule range < 0.1; **B**: < 0.4 and
 | `gosterim` | `puan` (shown with a score) or `kanıt yetersiz` (insufficient evidence, D16) |
 | `P_yedide_bir`, `P_a07`, `P_a03`, `P_car_inacc`, `P_ground_bld` | score under each alternative rule set |
 | `sh_open_public` … `sh_inaccessible` | share of the cell's land in each regime |
-| `sh_yard`, `sh_car`, `sh_natural`, `sh_unknown_building`, `sh_unmapped` | residential yards, car space, larger forest / farmland, buildings of unknown use, unmapped ground |
+| `sh_yard`, `sh_coast`, `sh_car`, `sh_natural`, `sh_unknown_building`, `sh_unmapped` | residential yards, modelled coastal strip (D21), car space, larger forest / farmland, buildings of unknown use, unmapped ground |
 | `scored_share` | share of the land that enters the score |
 | `bar_major_m`, `bar_rail_m` | length of major roads and surface rail in the cell (m) |
 | `bar_pieces` | pieces of ≥ 2,000 m² the barriers cut the land into |
@@ -106,7 +114,7 @@ Grade **A**: missing-data range < 0.2 and rule range < 0.1; **B**: < 0.4 and
 | `bar_cross_per_km` | crossings per km of barrier |
 
 Ground classes in the vector tiles (`r`): `op` open-public, `qp` quasi-public,
-`ti` ticketed, `pr` open-private, `in` invitation, `na` inaccessible, `ya` yard,
+`ti` ticketed, `pr` open-private, `in` invitation, `na` inaccessible, `ya` yard, `ks` coastal strip,
 `ca` car space, `do` forest/farmland, `ub` building of unknown use, `um` unmapped.
 
 ---

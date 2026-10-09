@@ -80,7 +80,9 @@
     <p class="sub" style="margin:8px 0 0">Scores: open-public 1, open-private 0.50,
       quasi-public 0.47, ticketed 0.38, invitation 0.13, inaccessible 0
       (P = A × [0.5 + 0.5 C]). Residential yards count as invitation; urban
-      groves under 50 ha and grass as open-public. Car space, larger forests and
+      groves under 50 ha and grass as open-public; the first 30 m from the
+      sea shore, where OpenStreetMap leaves it unmapped, as open-public under the
+      Coastal Law (Bosphorus excluded). Car space, larger forests and
       farmland are held out of the score and reported as shares.
       Uncertainty: unknown ground counted as 0 or 1 (missing-data range) and five
       alternative rule sets (rule range); grade A when both are narrow.</p>
@@ -93,7 +95,7 @@
     <p class="sub" style="margin:8px 0 0">Coverage: 28.79–29.27°E, 40.84–41.29°N,
       the extent of the Foursquare data. OpenStreetMap © contributors (ODbL),
       Geofabrik extract of 6 Oct 2026; Overture Maps places and buildings, Oct 2026;
-      Foursquare Open Source Places. Base map © CARTO. Rules version d39e772c.</p>
+      Foursquare Open Source Places. Base map © CARTO. Rules version db104307.</p>
   </details>
 </aside>
 
@@ -107,6 +109,7 @@ const REG = [
   ["ti", "ticketed",         "#d9b44a", "ticketed"],
   ["pr", "open_private",     "#ec9a5b", "open-private"],
   ["in", "invitation",       "#d0504a", "invitation"],
+  ["ks", "coast",            "#4fa88a", "coastal strip, 30 m (modelled open-public)"],
   ["ya", "yard",             "#e8a39e", "residential yard"],
   ["na", "inaccessible",     "#6e1c1c", "inaccessible"],
   ["ub", "unknown_building", "#cfcdc4", "building, use unknown"],
